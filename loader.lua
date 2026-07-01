@@ -566,6 +566,7 @@ local modules = {
     "cmd_spotify.lua",
     "cmd_tts.lua",
     "cmd_quiz.lua",
+    "cmd_quizgame.lua",
 }
 
 for _, name in ipairs(modules) do
