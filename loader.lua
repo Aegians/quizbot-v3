@@ -304,6 +304,7 @@ end
 do
     local KEY_FILE = "quizbot_gemini_key.txt"
     local SPOTIFY_FILE = "quizbot_spotify_token.txt"
+    local SPOTIFY_AUTH_FILE = "quizbot_spotify_auth.json"
 
     function ctx.loadApiKeys()
         if isfile and isfile(KEY_FILE) then
@@ -313,6 +314,21 @@ do
         if isfile and isfile(SPOTIFY_FILE) then
             ctx.settings.spotifyToken = readfile(SPOTIFY_FILE):gsub("%s+", "")
             ctx.consoleLog("Spotify token loaded from file")
+        end
+        if isfile and isfile(SPOTIFY_AUTH_FILE) then
+            local ok, data = pcall(function()
+                return ctx.HttpService:JSONDecode(readfile(SPOTIFY_AUTH_FILE))
+            end)
+            if ok and type(data) == "table" then
+                ctx.settings.spotifyClientId = data.clientId
+                ctx.settings.spotifyClientSecret = data.clientSecret
+                ctx.settings.spotifyRefreshToken = data.refreshToken
+                ctx.settings.spotifyToken = nil
+                ctx.settings.spotifyTokenExpiresAt = nil
+                ctx.consoleLog("Spotify refresh auth loaded from file")
+            else
+                ctx.consoleWarn("Spotify auth file exists but could not be read")
+            end
         end
     end
 
@@ -327,6 +343,20 @@ do
         if writefile then
             writefile(SPOTIFY_FILE, token)
             ctx.settings.spotifyToken = token
+        end
+    end
+
+    function ctx.saveSpotifyAuth(clientId, clientSecret, refreshToken)
+        ctx.settings.spotifyClientId = clientId
+        ctx.settings.spotifyClientSecret = clientSecret
+        ctx.settings.spotifyRefreshToken = refreshToken
+
+        if writefile then
+            writefile(SPOTIFY_AUTH_FILE, ctx.HttpService:JSONEncode({
+                clientId = clientId,
+                clientSecret = clientSecret,
+                refreshToken = refreshToken,
+            }))
         end
     end
 end

@@ -1,6 +1,6 @@
 --[[
     QuizBot v3 Module: Help & Utility Commands
-    Registers: /help, /stats, /setkey, /settoken, /destroy
+    Registers: /help, /stats, /setkey, /settoken, /setspotifyauth, /destroy
 ]]
 local ctx = ...
 
@@ -104,6 +104,30 @@ ctx.registerCommand({
         ctx.saveSpotifyToken(args)
         ctx.consoleLog("Spotify token saved!")
         ctx.notify("Token Set", "Spotify token saved to file")
+    end,
+})
+
+-- /setspotifyauth - Set Spotify refresh credentials (console-only)
+ctx.registerCommand({
+    aliases = {"setspotifyauth", "spotifyauth", "setsauth"},
+    args = "<client_id> <client_secret> <refresh_token>",
+    info = "Set Spotify refresh auth (console only, saved to file)",
+    category = "Utility",
+    permission = "admin",
+    consoleOnly = true,
+    fn = function(args)
+        local clientId, clientSecret, refreshToken = string.match(args, "^(%S+)%s+(%S+)%s+(%S+)$")
+        if not clientId or not clientSecret or not refreshToken then
+            ctx.consoleWarn("Usage: /setspotifyauth <client_id> <client_secret> <refresh_token>")
+            ctx.consoleWarn("Use this for long-lived Spotify auth; /settoken still accepts short-lived BQ access tokens.")
+            return
+        end
+
+        ctx.saveSpotifyAuth(clientId, clientSecret, refreshToken)
+        ctx.settings.spotifyToken = nil
+        ctx.settings.spotifyTokenExpiresAt = nil
+        ctx.consoleLog("Spotify refresh auth saved! The next music command will refresh the access token.")
+        ctx.notify("Spotify Auth Set", "Refresh auth saved to file")
     end,
 })
 

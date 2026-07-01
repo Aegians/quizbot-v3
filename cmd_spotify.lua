@@ -10,11 +10,112 @@ local HttpService = ctx.HttpService
 ----------------------------------------------------------------
 -- Spotify API Helpers
 ----------------------------------------------------------------
-local function spotifyRequest(endpoint, method, body)
-    if not ctx.settings.spotifyToken then
-        ctx.consoleWarn("No Spotify token. Use /settoken <token>")
-        return nil
+local function base64Encode(input)
+    local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    local output = {}
+    local buffer = 0
+    local bits = 0
+
+    for i = 1, #input do
+        buffer = buffer * 256 + string.byte(input, i)
+        bits += 8
+        while bits >= 6 do
+            bits -= 6
+            local index = math.floor(buffer / (2 ^ bits)) % 64
+            table.insert(output, string.sub(chars, index + 1, index + 1))
+        end
     end
+
+    if bits > 0 then
+        local index = (buffer * (2 ^ (6 - bits))) % 64
+        table.insert(output, string.sub(chars, index + 1, index + 1))
+    end
+
+    while (#output % 4) ~= 0 do
+        table.insert(output, "=")
+    end
+
+    return table.concat(output)
+end
+
+local function formEncode(data)
+    local parts = {}
+    for key, value in pairs(data) do
+        table.insert(parts, HttpService:UrlEncode(key) .. "=" .. HttpService:UrlEncode(value))
+    end
+    return table.concat(parts, "&")
+end
+
+local function refreshSpotifyToken()
+    if not ctx.settings.spotifyClientId
+    or not ctx.settings.spotifyClientSecret
+    or not ctx.settings.spotifyRefreshToken then
+        return false
+    end
+
+    local ok, response = pcall(request, {
+        Url = "https://accounts.spotify.com/api/token",
+        Method = "POST",
+        Headers = {
+            ["Authorization"] = "Basic " .. base64Encode(ctx.settings.spotifyClientId .. ":" .. ctx.settings.spotifyClientSecret),
+            ["Content-Type"] = "application/x-www-form-urlencoded",
+        },
+        Body = formEncode({
+            grant_type = "refresh_token",
+            refresh_token = ctx.settings.spotifyRefreshToken,
+        }),
+    })
+
+    if not ok then
+        ctx.consoleErr("Spotify token refresh failed: " .. tostring(response))
+        return false
+    end
+
+    local data = nil
+    if response.Body and #response.Body > 0 then
+        local decodeOk, decoded = pcall(function()
+            return HttpService:JSONDecode(response.Body)
+        end)
+        if decodeOk then data = decoded end
+    end
+
+    if response.StatusCode < 200 or response.StatusCode >= 300 then
+        local message = data and (data.error_description or data.error) or tostring(response.StatusCode)
+        ctx.consoleWarn("Spotify token refresh rejected: " .. tostring(message))
+        return false
+    end
+
+    if not data or not data.access_token then
+        ctx.consoleWarn("Spotify token refresh response had no access token")
+        return false
+    end
+
+    ctx.settings.spotifyToken = data.access_token
+    ctx.settings.spotifyTokenExpiresAt = tick() + math.max((data.expires_in or 3600) - 60, 60)
+
+    if data.refresh_token and data.refresh_token ~= ctx.settings.spotifyRefreshToken then
+        ctx.saveSpotifyAuth(ctx.settings.spotifyClientId, ctx.settings.spotifyClientSecret, data.refresh_token)
+    end
+
+    ctx.consoleLog("Spotify access token refreshed")
+    return true
+end
+
+local function ensureSpotifyToken()
+    if not ctx.settings.spotifyToken then
+        if not refreshSpotifyToken() then
+            ctx.consoleWarn("No Spotify token. Use /settoken <token> or /setspotifyauth <client_id> <client_secret> <refresh_token>")
+            return false
+        end
+    elseif ctx.settings.spotifyTokenExpiresAt and tick() >= ctx.settings.spotifyTokenExpiresAt then
+        refreshSpotifyToken()
+    end
+
+    return true
+end
+
+local function spotifyRequest(endpoint, method, body, retried)
+    if not ensureSpotifyToken() then return nil end
 
     method = method and method:upper() or "GET"
 
@@ -39,6 +140,10 @@ local function spotifyRequest(endpoint, method, body)
     end
 
     if response.StatusCode == 401 then
+        if not retried and refreshSpotifyToken() then
+            return spotifyRequest(endpoint, method, body, true)
+        end
+
         -- Console-acquired tokens can't be auto-refreshed (no refresh_token),
         -- so the user must re-run /settoken. Debounce so we warn at most once
         -- every 30s instead of on every poll.

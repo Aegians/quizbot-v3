@@ -42,8 +42,10 @@ quizbot-v3/
    - **First-run prompt (easiest):** on first launch, if no key is saved, the console asks you to paste it. This input is local to your executor and is never sent to chat. It's then saved to a file for next time.
    - **Console command:** type `/setkey YOUR_KEY` **in the executor console**. This command is console-only — it will not run from in-game chat, so it can't be broadcast.
    - **Manual file:** create `quizbot_gemini_key.txt` in your executor's workspace folder and paste the key inside. The loader reads it at boot.
-3. **Add your Spotify token** (optional, for music), the same private way: `/settoken YOUR_TOKEN` in the console, or a `quizbot_spotify_token.txt` file.
-   - Get a token from the Spotify console with the scopes `user-read-currently-playing`, `user-read-playback-state`, and `user-modify-playback-state`. Requires **Spotify Premium**.
+3. **Add Spotify auth** (optional, for music), the same private way:
+   - Quick setup: type `/settoken YOUR_BQ_ACCESS_TOKEN` in the executor console, or create a `quizbot_spotify_token.txt` file. This token expires in about an hour.
+   - Better setup: type `/setspotifyauth CLIENT_ID CLIENT_SECRET REFRESH_TOKEN` in the executor console. The bot saves these locally in `quizbot_spotify_auth.json` and auto-refreshes the short-lived access token when needed.
+   - Use the scopes `user-read-currently-playing`, `user-read-playback-state`, and `user-modify-playback-state`. Requires **Spotify Premium**.
 4. Type `/help` (console) or `!help` (in-game chat) for the full command list.
 
 > **Never type `!setkey` or `!settoken` in Roblox chat.** Those messages are broadcast. The `setkey`/`settoken` commands are locked to the executor console for this reason and will silently ignore chat attempts.
@@ -53,6 +55,8 @@ Commands work two ways: `!command` in Roblox chat, or `/command` in the executor
 ### Keys are never in the repo
 
 `loader.lua` ships with `geminiApiKey = nil`. Your actual key lives only in a local file on your machine (`quizbot_gemini_key.txt`), which is listed in `.gitignore` so it can't be committed by accident. This is why the repo can be **public** and still leak nothing — anyone reading the code sees a placeholder and a `readfile` call, not your key. (A private repo is possible but can't be loaded by a bare `game:HttpGet`; it would require embedding a GitHub token in the script, which is a worse leak than keeping the code public.)
+
+Spotify secrets are local-only too: short-lived access tokens live in `quizbot_spotify_token.txt`, and refresh credentials live in `quizbot_spotify_auth.json`. Both files are ignored by git.
 
 ---
 
