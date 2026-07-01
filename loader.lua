@@ -135,7 +135,7 @@ ctx.settings = {
     geminiApiKey = nil,        -- Set by user or loaded from file
     modelChat = "gemini-2.5-flash",
     modelQuiz = "gemini-2.5-pro",
-    modelTTS  = "gemini-2.5-flash-preview-tts",
+    modelTTS  = "gemini-3.1-flash-tts-preview",
     
     -- Spotify
     spotifyToken = nil,

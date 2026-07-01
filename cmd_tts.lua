@@ -129,7 +129,7 @@ end
 
 ----------------------------------------------------------------
 -- Gemini TTS API
--- Uses the generateContent endpoint with audio response
+-- Uses the Interactions endpoint with audio response
 ----------------------------------------------------------------
 local function generateSpeech(text, voice)
     if not ctx.settings.geminiApiKey then
@@ -140,24 +140,21 @@ local function generateSpeech(text, voice)
     voice = voice or currentVoice
     local model = ctx.settings.modelTTS
 
-    -- Use the generateContent endpoint with response_modalities audio
-    local url = "https://generativelanguage.googleapis.com/v1beta/models/"
-        .. model .. ":generateContent?key=" .. ctx.settings.geminiApiKey
+    local url = "https://generativelanguage.googleapis.com/v1beta/interactions"
 
     local payload = {
-        contents = {{
-            parts = {{ text = text }}
-        }},
-        generationConfig = {
-            responseModalities = {"AUDIO"},
-            speechConfig = {
-                voiceConfig = {
-                    prebuiltVoiceConfig = {
-                        voiceName = voice,
-                    }
-                }
+        model = model,
+        input = text,
+        response_format = {
+            type = "audio",
+        },
+        generation_config = {
+            speech_config = {
+                {
+                    voice = voice,
+                },
             }
-        }
+        },
     }
 
     ctx.consoleLog("TTS generating: '" .. text:sub(1, 50) .. "...' (voice: " .. voice .. ")")
@@ -167,7 +164,10 @@ local function generateSpeech(text, voice)
         return request({
             Url = url,
             Method = "POST",
-            Headers = { ["Content-Type"] = "application/json" },
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["x-goog-api-key"] = ctx.settings.geminiApiKey,
+            },
             Body = HttpService:JSONEncode(payload),
         })
     end)
@@ -177,7 +177,7 @@ local function generateSpeech(text, voice)
         return nil
     end
 
-    if response.Success and response.StatusCode == 200 then
+    if response.StatusCode == 200 then
         local data = HttpService:JSONDecode(response.Body)
 
         -- Track tokens
@@ -191,6 +191,12 @@ local function generateSpeech(text, voice)
         local audioData = nil
         local mimeType = nil
         pcall(function()
+            if data.output_audio then
+                audioData = data.output_audio.data
+                mimeType = data.output_audio.mime_type or data.output_audio.mimeType
+                return
+            end
+
             local part = data.candidates[1].content.parts[1]
             if part.inlineData then
                 audioData = part.inlineData.data
@@ -206,6 +212,14 @@ local function generateSpeech(text, voice)
         end
     else
         ctx.consoleErr("TTS API error: " .. tostring(response.StatusCode))
+        if response.Body and #response.Body > 0 then
+            local okBody, data = pcall(function()
+                return HttpService:JSONDecode(response.Body)
+            end)
+            if okBody and data and data.error then
+                ctx.consoleErr("TTS API message: " .. tostring(data.error.message or data.error.status or "unknown"))
+            end
+        end
         return nil
     end
 end
