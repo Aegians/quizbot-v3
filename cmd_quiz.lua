@@ -134,7 +134,7 @@ REQUIREMENTS:
             if s and data then
                 ctx.lastQuizData = data
                 ctx.BotChat("✅ | Quiz generated: " .. args .. " (" .. #data .. " questions)")
-                ctx.consoleLog("Quiz data stored. Use /startai to run it.")
+                ctx.consoleLog("Quiz stored. Use /startquiz to run it in chat.")
             else
                 ctx.BotChat("❌ | Failed to parse quiz data")
             end

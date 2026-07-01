@@ -29,6 +29,7 @@ quizbot-v3/
 ├── cmd_spotify.lua   /play, /queue, /devices, /pause, /skip, /prev, /np, /vol, /shuffle, /loop
 ├── cmd_tts.lua       /say, /announce, /voice, /stoptts, /cleartts
 ├── cmd_quiz.lua      /ask, /real, /gen, /memorize, /clearmem, /copyquiz, /jump
+├── cmd_quizgame.lua  /quiz, /startquiz, /stopquiz, /skipq, /lb (live trivia engine)
 └── README.md
 ```
 
