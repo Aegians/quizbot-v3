@@ -361,18 +361,20 @@ do
         end
     end
 
-    function ctx.runCommand(input, player)
+    function ctx.runCommand(input, player, source)
+        -- source is "console" (local rconsole) or "chat" (broadcast).
+        -- Defaults to "chat" so anything unspecified is treated as untrusted.
+        source = source or "chat"
+
         -- Parse prefix + command name
         local prefix = ctx.settings.prefix
         local msg = input
-        local isConsole = false
 
         -- Check if it starts with the chat prefix or console prefix
         if string.sub(msg, 1, #prefix) == prefix then
             msg = string.sub(msg, #prefix + 1)
         elseif string.sub(msg, 1, 1) == "/" then
             msg = string.sub(msg, 2)
-            isConsole = true
         else
             return false
         end
@@ -391,6 +393,13 @@ do
         local def = aliasMap[cmdName]
         if not def then return false end
 
+        -- Console-only guard: sensitive commands (key/token setters) must
+        -- come from the local executor console, never from broadcast chat.
+        -- Fail silently so the command name isn't confirmed in chat either.
+        if def.consoleOnly and source ~= "console" then
+            return false
+        end
+
         -- Permission check
         if def.permission == "admin" then
             local allowed = false
@@ -405,7 +414,7 @@ do
 
         -- Execute
         ctx.stats.commandsRun += 1
-        local ok, err = pcall(def.fn, args, player, input)
+        local ok, err = pcall(def.fn, args, player, input, source)
         if not ok then
             ctx.consoleErr("Command '" .. cmdName .. "' error: " .. tostring(err))
         end
@@ -569,7 +578,20 @@ ctx.consoleLog("Loaded " .. cmdCount .. " commands across " .. #modules .. " mod
 ctx.consoleLog("Prefix: '" .. ctx.settings.prefix .. "' (chat) | '/' (console)")
 
 if not ctx.settings.geminiApiKey then
-    ctx.consoleWarn("No Gemini API key! Set with: /setkey <key>")
+    -- First-run: prompt privately in the console (rconsoleinput is local,
+    -- never broadcast to chat). Paste the key here and it's saved to a
+    -- local file for next time. Press Enter to skip.
+    rconsoleprint("\n")
+    ctx.consoleWarn("No Gemini API key found.")
+    rconsoleprint("Paste your Gemini API key and press Enter (or just Enter to skip): ")
+    local entered = rconsoleinput()
+    if entered and entered:gsub("%s+", "") ~= "" then
+        ctx.saveGeminiKey(entered:gsub("%s+", ""))
+        ctx.consoleLog("Gemini key saved. AI + TTS commands are ready.")
+    else
+        ctx.consoleWarn("Skipped. Set later with /setkey <key> in the console.")
+    end
+    rconsoleprint("\n")
 end
 
 -- Chat listener
@@ -578,7 +600,7 @@ ctx.track(ctx.TextChatService.MessageReceived:Connect(function(txt)
     if not sender then return end
     local plr = ctx.Players:GetPlayerByUserId(sender.UserId)
     if not plr then return end
-    ctx.runCommand(txt.Text, plr)
+    ctx.runCommand(txt.Text, plr, "chat")
 end))
 
 -- Console input listener
@@ -587,9 +609,9 @@ task.spawn(function()
         local inp = rconsoleinput()
         if inp and inp ~= "" then
             rconsoleprint("> " .. inp .. "\n")
-            if not ctx.runCommand("/" .. inp, ctx.LocalPlayer) then
+            if not ctx.runCommand("/" .. inp, ctx.LocalPlayer, "console") then
                 -- Try with prefix too
-                ctx.runCommand(ctx.settings.prefix .. inp, ctx.LocalPlayer)
+                ctx.runCommand(ctx.settings.prefix .. inp, ctx.LocalPlayer, "console")
             end
         end
         task.wait(0.1)

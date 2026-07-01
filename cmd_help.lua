@@ -68,13 +68,14 @@ ctx.registerCommand({
     end,
 })
 
--- /setkey - Set Gemini API key
+-- /setkey - Set Gemini API key (console-only to avoid leaking in chat)
 ctx.registerCommand({
     aliases = {"setkey", "geminikey", "apikey"},
     args = "<key>",
-    info = "Set Gemini API key (saved to file)",
+    info = "Set Gemini API key (console only, saved to file)",
     category = "Utility",
     permission = "admin",
+    consoleOnly = true,
     fn = function(args)
         if args == "" then
             ctx.consoleWarn("Usage: /setkey <your-api-key>")
@@ -86,13 +87,14 @@ ctx.registerCommand({
     end,
 })
 
--- /settoken - Set Spotify token
+-- /settoken - Set Spotify token (console-only to avoid leaking in chat)
 ctx.registerCommand({
     aliases = {"settoken", "spotifytoken", "stoken"},
     args = "<token>",
-    info = "Set Spotify OAuth token (saved to file)",
+    info = "Set Spotify OAuth token (console only, saved to file)",
     category = "Utility",
     permission = "admin",
+    consoleOnly = true,
     fn = function(args)
         if args == "" then
             ctx.consoleWarn("Usage: /settoken <spotify-oauth-token>")
