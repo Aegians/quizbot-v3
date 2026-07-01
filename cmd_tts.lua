@@ -355,7 +355,7 @@ ctx.registerCommand({
         if found then
             currentVoice = found
             ctx.BotChat("🎙️ | Voice set to: " .. found)
-            playTTS("Hello! I am now using the " .. found .. " voice.")
+            playTTS("Hello! This voice is ready.")
         else
             ctx.BotChat("❌ | Unknown voice. Available: " .. table.concat(VOICES, ", "))
         end
