@@ -18,7 +18,11 @@ end
 -- Available voices
 local VOICES = {
     "Kore", "Puck", "Charon", "Fenrir", "Aoede",
-    "Leda", "Orus", "Zephyr", "Enceladus",
+    "Leda", "Orus", "Zephyr", "Enceladus", "Callirrhoe",
+    "Autonoe", "Iapetus", "Umbriel", "Algieba", "Despina",
+    "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
+    "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird",
+    "Zubenelgenubi", "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
 }
 local currentVoice = "Kore"
 local currentSound = nil
@@ -127,6 +131,51 @@ local function parseSampleRate(mimeType)
     return rate and tonumber(rate) or 24000
 end
 
+local function looksLikeBase64Audio(value)
+    return type(value) == "string"
+        and #value > 100
+        and string.match(value, "^[A-Za-z0-9+/=\r\n]+$") ~= nil
+end
+
+local function findAudioData(value, depth)
+    if type(value) ~= "table" or (depth or 0) > 8 then
+        return nil, nil
+    end
+
+    local direct = value.output_audio or value.outputAudio or value.inlineData or value.inline_data
+        or value.audio or value.audioData or value.audio_data
+    if type(direct) == "table" then
+        local data = direct.data or direct.bytes or direct.audio or direct.audioData or direct.audio_data
+        if looksLikeBase64Audio(data) then
+            return data, direct.mime_type or direct.mimeType or direct.mime or direct.media_type or direct.mediaType
+        end
+    end
+
+    if looksLikeBase64Audio(value.data) then
+        local mimeType = value.mime_type or value.mimeType or value.mime or value.media_type or value.mediaType
+        if mimeType and string.find(string.lower(mimeType), "audio") then
+            return value.data, mimeType
+        end
+    end
+
+    for _, child in pairs(value) do
+        local data, mimeType = findAudioData(child, (depth or 0) + 1)
+        if data then return data, mimeType end
+    end
+
+    return nil, nil
+end
+
+local function tableKeys(value)
+    if type(value) ~= "table" then return "not a table" end
+    local keys = {}
+    for key in pairs(value) do
+        table.insert(keys, tostring(key))
+    end
+    table.sort(keys)
+    return table.concat(keys, ", ")
+end
+
 ----------------------------------------------------------------
 -- Gemini TTS API
 -- Uses the Interactions endpoint with audio response
@@ -167,6 +216,7 @@ local function generateSpeech(text, voice)
             Headers = {
                 ["Content-Type"] = "application/json",
                 ["x-goog-api-key"] = ctx.settings.geminiApiKey,
+                ["Api-Revision"] = "2026-05-20",
             },
             Body = HttpService:JSONEncode(payload),
         })
@@ -187,27 +237,21 @@ local function generateSpeech(text, voice)
             ctx.stats.tokensOutput += (data.usageMetadata.candidatesTokenCount or 0)
         end
 
-        -- Extract audio data (base64 encoded)
-        local audioData = nil
-        local mimeType = nil
-        pcall(function()
-            if data.output_audio then
-                audioData = data.output_audio.data
-                mimeType = data.output_audio.mime_type or data.output_audio.mimeType
-                return
-            end
-
-            local part = data.candidates[1].content.parts[1]
-            if part.inlineData then
-                audioData = part.inlineData.data
-                mimeType = part.inlineData.mimeType
-            end
-        end)
+        -- Extract audio data (base64 encoded). Raw REST responses can use
+        -- snake_case, camelCase, or nested event-like shapes depending on API revision.
+        local audioData, mimeType = findAudioData(data)
 
         if audioData then
             return audioData, mimeType
         else
             ctx.consoleWarn("TTS: No audio data in response")
+            ctx.consoleWarn("TTS response keys: " .. tableKeys(data))
+            if data.output then
+                ctx.consoleWarn("TTS output keys: " .. tableKeys(data.output))
+            end
+            if data.response then
+                ctx.consoleWarn("TTS response.response keys: " .. tableKeys(data.response))
+            end
             return nil
         end
     else
