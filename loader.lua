@@ -308,6 +308,10 @@ do
     local SPOTIFY_FILE = "quizbot_spotify_token.txt"
     local SPOTIFY_AUTH_FILE = "quizbot_spotify_auth.json"
 
+    local function cleanSecret(value)
+        return value and tostring(value):gsub("%s+", "") or nil
+    end
+
     function ctx.loadApiKeys()
         if isfile and isfile(KEY_FILE) then
             ctx.settings.geminiApiKey = readfile(KEY_FILE):gsub("%s+", "")
@@ -322,9 +326,9 @@ do
                 return ctx.HttpService:JSONDecode(readfile(SPOTIFY_AUTH_FILE))
             end)
             if ok and type(data) == "table" then
-                ctx.settings.spotifyClientId = data.clientId
-                ctx.settings.spotifyClientSecret = data.clientSecret
-                ctx.settings.spotifyRefreshToken = data.refreshToken
+                ctx.settings.spotifyClientId = cleanSecret(data.clientId)
+                ctx.settings.spotifyClientSecret = cleanSecret(data.clientSecret)
+                ctx.settings.spotifyRefreshToken = cleanSecret(data.refreshToken)
                 ctx.settings.spotifyToken = nil
                 ctx.settings.spotifyTokenExpiresAt = nil
                 ctx.consoleLog("Spotify refresh auth loaded from file")
@@ -349,6 +353,10 @@ do
     end
 
     function ctx.saveSpotifyAuth(clientId, clientSecret, refreshToken)
+        clientId = cleanSecret(clientId)
+        clientSecret = cleanSecret(clientSecret)
+        refreshToken = cleanSecret(refreshToken)
+
         ctx.settings.spotifyClientId = clientId
         ctx.settings.spotifyClientSecret = clientSecret
         ctx.settings.spotifyRefreshToken = refreshToken
