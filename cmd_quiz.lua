@@ -41,6 +41,22 @@ local quizGenerationConfig = {
     maxOutputTokens = 1200,
     temperature = 0.8,
     responseMimeType = "application/json",
+    responseSchema = {
+        type = "ARRAY",
+        items = {
+            type = "OBJECT",
+            properties = {
+                q = { type = "STRING" },
+                o = {
+                    type = "ARRAY",
+                    items = { type = "STRING" },
+                    minItems = 4,
+                    maxItems = 4,
+                },
+            },
+            required = { "q", "o" },
+        },
+    },
 }
 
 local function parseGeneratedQuiz(raw)
@@ -50,7 +66,11 @@ local function parseGeneratedQuiz(raw)
     local ok, data = pcall(function()
         return ctx.HttpService:JSONDecode(json)
     end)
-    if not ok or type(data) ~= "table" or #data == 0 then
+    if not ok or type(data) ~= "table" then
+        return nil
+    end
+    data = data.questions or data.quiz or data.items or data
+    if type(data) ~= "table" or #data == 0 then
         return nil
     end
 
@@ -168,6 +188,7 @@ REQUIREMENTS:
                 ctx.BotChat("✅ | Quiz generated: " .. args .. " (" .. #data .. " questions)")
                 ctx.consoleLog("Quiz stored. Use /startquiz to run it in chat.")
             else
+                ctx.consoleWarn("Quiz parse failed. Raw Gemini output: " .. string.sub(res, 1, 500))
                 ctx.BotChat("❌ | Failed to parse quiz data")
             end
         end
