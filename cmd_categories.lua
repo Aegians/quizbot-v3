@@ -475,6 +475,22 @@ function ctx.getQuizCategoryQuestions(name, difficulty)
     return getQuestions(categoryName, difficulty), categoryName
 end
 
+function ctx.getQuizCategoryDifficulties(name)
+    local categoryName = getCategoryName(name)
+    local category = categoryName and categories[categoryName]
+    if not category then return {} end
+
+    local difficulties = {}
+    for difficulty in pairs(category.difficulties) do
+        if difficulty ~= "" then
+            table.insert(difficulties, difficulty)
+        end
+    end
+    table.sort(difficulties, function(a, b) return a < b end)
+    table.insert(difficulties, 1, "all")
+    return difficulties
+end
+
 ctx.registerCommand({
     aliases = { "categories", "category", "cats", "topics" },
     info = "List built-in quiz categories",

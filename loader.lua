@@ -130,6 +130,7 @@ ctx.settings = {
     allowedUsers = { ctx.LocalPlayer.Name, "GoDzwolf", "DeezChillaze" },
     chatRadius = 25,
     minMessageCooldown = 2.3,
+    questionTimeout = 15,
     
     -- Gemini
     geminiApiKey = nil,        -- Set by user or loaded from file

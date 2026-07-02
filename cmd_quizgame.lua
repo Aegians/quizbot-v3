@@ -89,6 +89,29 @@ local function addPoints(player, pts)
     quizPoints[name] = (quizPoints[name] or 0) + pts
 end
 
+local function addPointsByName(name, pts)
+    if not name or name == "" then return false end
+    pts = tonumber(pts)
+    if not pts then return false end
+
+    local player = ctx.findPlayer(name)
+    local displayName = player and player.DisplayName or name
+    quizPoints[displayName] = math.max((quizPoints[displayName] or 0) + pts, 0)
+    return true, displayName, quizPoints[displayName]
+end
+
+local function resetPoints(name)
+    if not name or name == "" then
+        quizPoints = {}
+        return true
+    end
+
+    local player = ctx.findPlayer(name)
+    local displayName = player and player.DisplayName or name
+    quizPoints[displayName] = nil
+    return true, displayName
+end
+
 local function leaderboardString()
     local arr = {}
     for name, pts in pairs(quizPoints) do
@@ -106,6 +129,18 @@ local function leaderboardString()
         table.insert(lines, tag .. " " .. arr[i].name .. " - " .. arr[i].pts)
     end
     return table.concat(lines, "   ")
+end
+
+function ctx.addQuizPoints(name, pts)
+    return addPointsByName(name, pts)
+end
+
+function ctx.resetQuizPoints(name)
+    return resetPoints(name)
+end
+
+function ctx.getQuizLeaderboard()
+    return leaderboardString()
 end
 
 ----------------------------------------------------------------
@@ -137,7 +172,7 @@ local function prepareQuestion(q)
         text = text,
         answers = shuffled,
         rightAnswerIndex = rightIdx,
-        timeout = 15,
+        timeout = ctx.settings.questionTimeout or 15,
     }
 end
 
@@ -428,6 +463,39 @@ ctx.registerCommand({
     category = "Quiz",
     fn = function()
         ctx.BotChat("📊 | " .. leaderboardString())
+    end,
+})
+
+ctx.registerCommand({
+    aliases = { "addpoints", "givepoints", "pointsadd" },
+    args = "<player> <amount>",
+    info = "Add quiz points to a player",
+    category = "Quiz",
+    fn = function(args)
+        local name, amount = string.match(args or "", "^(.-)%s+(-?%d+)$")
+        if not name or name == "" then
+            ctx.consoleWarn("Usage: /addpoints <player> <amount>")
+            return
+        end
+        local ok, displayName, total = addPointsByName(name, tonumber(amount))
+        if ok then
+            ctx.BotChat("Points: " .. displayName .. " now has " .. tostring(total))
+        end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = { "resetpoints", "clearpoints" },
+    args = "[player]",
+    info = "Reset quiz points for one player or everyone",
+    category = "Quiz",
+    fn = function(args)
+        local ok, displayName = resetPoints(args)
+        if ok and displayName then
+            ctx.BotChat("Points cleared for " .. displayName)
+        elseif ok then
+            ctx.BotChat("All quiz points cleared")
+        end
     end,
 })
 
