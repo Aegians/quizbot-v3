@@ -18,6 +18,12 @@ pcall(function() math.randomseed(tick() % 1 * 1e7 + tick()) end)
 
 local letters = { "A", "B", "C", "D", "E", "F", "G", "H" }
 
+local quizGenerationConfig = {
+    maxOutputTokens = 1200,
+    temperature = 0.8,
+    responseMimeType = "application/json",
+}
+
 local function parseGeneratedQuiz(raw)
     if not raw then return nil end
     local cleaned = raw:gsub("```json", ""):gsub("```", "")
@@ -341,10 +347,10 @@ REQUIREMENTS:
 5. Output raw JSON only. No markdown, no code fences.]]
 
         task.spawn(function()
-            local res = ctx.geminiRequest(prompt, ctx.settings.modelQuiz)
+            local res = ctx.geminiRequest(prompt, ctx.settings.modelQuiz, nil, quizGenerationConfig)
             if not res and ctx.settings.modelQuiz ~= ctx.settings.modelChat then
                 ctx.consoleWarn("Quiz model failed; retrying with " .. ctx.settings.modelChat)
-                res = ctx.geminiRequest(prompt, ctx.settings.modelChat)
+                res = ctx.geminiRequest(prompt, ctx.settings.modelChat, nil, quizGenerationConfig)
             end
             if not res then
                 ctx.BotChat("❌ | Quiz generation failed. Check console for Gemini API message.")

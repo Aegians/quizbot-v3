@@ -134,7 +134,7 @@ ctx.settings = {
     -- Gemini
     geminiApiKey = nil,        -- Set by user or loaded from file
     modelChat = "gemini-2.5-flash",
-    modelQuiz = "gemini-2.5-pro",
+    modelQuiz = "gemini-2.5-flash",
     modelTTS  = "gemini-3.1-flash-tts-preview",
     
     -- Spotify
@@ -463,7 +463,7 @@ end
 ----------------------------------------------------------------
 -- Gemini API Helper
 ----------------------------------------------------------------
-function ctx.geminiRequest(prompt, model, retryCount)
+function ctx.geminiRequest(prompt, model, retryCount, generationConfig)
     if not ctx.settings.geminiApiKey then
         ctx.consoleWarn("No Gemini API key set")
         return nil
@@ -477,7 +477,7 @@ function ctx.geminiRequest(prompt, model, retryCount)
 
     local payload = {
         contents = {{ parts = {{ text = prompt }} }},
-        generationConfig = { maxOutputTokens = 300 },
+        generationConfig = generationConfig or { maxOutputTokens = 300 },
     }
 
     local ok, response = pcall(function()
@@ -509,7 +509,7 @@ function ctx.geminiRequest(prompt, model, retryCount)
         retryCount = retryCount or 0
         if retryCount < 1 then
             task.wait(5.5)
-            return ctx.geminiRequest(prompt, model, retryCount + 1)
+            return ctx.geminiRequest(prompt, model, retryCount + 1, generationConfig)
         end
         return nil
     else

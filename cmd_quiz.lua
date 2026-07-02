@@ -37,6 +37,12 @@ end
 local getPlayerContext = ctx.getPlayerContext
 local facePlayer = ctx.facePlayer
 
+local quizGenerationConfig = {
+    maxOutputTokens = 1200,
+    temperature = 0.8,
+    responseMimeType = "application/json",
+}
+
 local function parseGeneratedQuiz(raw)
     if not raw then return nil end
     local cleaned = raw:gsub("```json", ""):gsub("```", "")
@@ -150,10 +156,10 @@ REQUIREMENTS:
 3. Keep questions under 80 characters. Avoid complex words to prevent Roblox filtering.
 4. No markdown, just raw JSON.]]
 
-        local res = ctx.geminiRequest(prompt, ctx.settings.modelQuiz)
+        local res = ctx.geminiRequest(prompt, ctx.settings.modelQuiz, nil, quizGenerationConfig)
         if not res and ctx.settings.modelQuiz ~= ctx.settings.modelChat then
             ctx.consoleWarn("Quiz model failed; retrying with " .. ctx.settings.modelChat)
-            res = ctx.geminiRequest(prompt, ctx.settings.modelChat)
+            res = ctx.geminiRequest(prompt, ctx.settings.modelChat, nil, quizGenerationConfig)
         end
         if res then
             local data = parseGeneratedQuiz(res)
