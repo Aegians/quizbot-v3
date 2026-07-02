@@ -514,6 +514,16 @@ function ctx.geminiRequest(prompt, model, retryCount)
         return nil
     else
         ctx.consoleErr("Gemini API error: " .. tostring(response.StatusCode))
+        if response.Body and #response.Body > 0 then
+            local okBody, data = pcall(function()
+                return ctx.HttpService:JSONDecode(response.Body)
+            end)
+            if okBody and data and data.error then
+                ctx.consoleErr("Gemini API message: " .. tostring(data.error.message or data.error.status or "unknown"))
+            else
+                ctx.consoleErr("Gemini API body: " .. string.sub(tostring(response.Body), 1, 300))
+            end
+        end
         return nil
     end
 end
@@ -596,6 +606,7 @@ local modules = {
     "cmd_spotify.lua",
     "cmd_tts.lua",
     "cmd_quiz.lua",
+    "cmd_categories.lua",
     "cmd_quizgame.lua",
 }
 
@@ -626,13 +637,48 @@ if not ctx.settings.geminiApiKey then
 end
 
 -- Chat listener
+local recentChatCommands = {}
+local function runChatCommandOnce(message, player)
+    if not message or not player then return end
+    local key = tostring(player.UserId) .. "|" .. message
+    local now = tick()
+    if recentChatCommands[key] and (now - recentChatCommands[key]) < 0.75 then
+        return
+    end
+    recentChatCommands[key] = now
+    ctx.runCommand(message, player, "chat")
+end
+
 ctx.track(ctx.TextChatService.MessageReceived:Connect(function(txt)
     local sender = txt.TextSource
     if not sender then return end
     local plr = ctx.Players:GetPlayerByUserId(sender.UserId)
     if not plr then return end
-    ctx.runCommand(txt.Text, plr, "chat")
+    runChatCommandOnce(txt.Text, plr)
 end))
+
+-- Fallback for games/executors where TextChatService.MessageReceived
+-- misses command text. Slash-prefixed chat commands may still be consumed
+-- by Roblox before scripts see them, so the reliable in-chat prefix is "!".
+local function hookPlayerChat(player)
+    if not player or not player.Chatted then return end
+    ctx.track(player.Chatted:Connect(function(message)
+        runChatCommandOnce(message, player)
+    end))
+end
+
+for _, player in ipairs(ctx.Players:GetPlayers()) do
+    hookPlayerChat(player)
+end
+ctx.track(ctx.Players.PlayerAdded:Connect(hookPlayerChat))
+
+pcall(function()
+    ctx.track(ctx.TextChatService.SendingMessage:Connect(function(txt)
+        if txt and txt.Text then
+            runChatCommandOnce(txt.Text, ctx.LocalPlayer)
+        end
+    end))
+end)
 
 -- Console input listener
 task.spawn(function()

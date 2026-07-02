@@ -37,6 +37,30 @@ end
 local getPlayerContext = ctx.getPlayerContext
 local facePlayer = ctx.facePlayer
 
+local function parseGeneratedQuiz(raw)
+    if not raw then return nil end
+    local cleaned = raw:gsub("```json", ""):gsub("```", "")
+    local json = cleaned:match("%b[]") or cleaned
+    local ok, data = pcall(function()
+        return ctx.HttpService:JSONDecode(json)
+    end)
+    if not ok or type(data) ~= "table" or #data == 0 then
+        return nil
+    end
+
+    for _, item in ipairs(data) do
+        local text = item.q or item.question or item.text
+        local opts = item.o or item.options or item.answers
+        if type(text) ~= "string" or type(opts) ~= "table" or #opts < 2 then
+            return nil
+        end
+        item.q = text
+        item.o = opts
+    end
+
+    return data
+end
+
 ----------------------------------------------------------------
 -- Register Commands
 ----------------------------------------------------------------
@@ -127,11 +151,13 @@ REQUIREMENTS:
 4. No markdown, just raw JSON.]]
 
         local res = ctx.geminiRequest(prompt, ctx.settings.modelQuiz)
+        if not res and ctx.settings.modelQuiz ~= ctx.settings.modelChat then
+            ctx.consoleWarn("Quiz model failed; retrying with " .. ctx.settings.modelChat)
+            res = ctx.geminiRequest(prompt, ctx.settings.modelChat)
+        end
         if res then
-            local s, data = pcall(function()
-                return ctx.HttpService:JSONDecode(res:gsub("```json", ""):gsub("```", ""))
-            end)
-            if s and data then
+            local data = parseGeneratedQuiz(res)
+            if data then
                 ctx.lastQuizData = data
                 ctx.BotChat("✅ | Quiz generated: " .. args .. " (" .. #data .. " questions)")
                 ctx.consoleLog("Quiz stored. Use /startquiz to run it in chat.")
@@ -196,3 +222,4 @@ ctx.registerCommand({
         end
     end,
 })
+

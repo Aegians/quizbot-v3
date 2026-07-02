@@ -18,6 +18,30 @@ pcall(function() math.randomseed(tick() % 1 * 1e7 + tick()) end)
 
 local letters = { "A", "B", "C", "D", "E", "F", "G", "H" }
 
+local function parseGeneratedQuiz(raw)
+    if not raw then return nil end
+    local cleaned = raw:gsub("```json", ""):gsub("```", "")
+    local json = cleaned:match("%b[]") or cleaned
+    local ok, data = pcall(function()
+        return ctx.HttpService:JSONDecode(json)
+    end)
+    if not ok or type(data) ~= "table" or #data == 0 then
+        return nil
+    end
+
+    for _, item in ipairs(data) do
+        local text = item.q or item.question or item.text
+        local opts = item.o or item.options or item.answers
+        if type(text) ~= "string" or type(opts) ~= "table" or #opts < 2 then
+            return nil
+        end
+        item.q = text
+        item.o = opts
+    end
+
+    return data
+end
+
 ----------------------------------------------------------------
 -- Quiz State
 ----------------------------------------------------------------
@@ -243,6 +267,8 @@ local function runQuiz(questions)
     questionAnsweredBy = nil
 end
 
+ctx.runQuiz = runQuiz
+
 ----------------------------------------------------------------
 -- Chat listener for answers (separate from the command listener)
 ----------------------------------------------------------------
@@ -316,14 +342,16 @@ REQUIREMENTS:
 
         task.spawn(function()
             local res = ctx.geminiRequest(prompt, ctx.settings.modelQuiz)
+            if not res and ctx.settings.modelQuiz ~= ctx.settings.modelChat then
+                ctx.consoleWarn("Quiz model failed; retrying with " .. ctx.settings.modelChat)
+                res = ctx.geminiRequest(prompt, ctx.settings.modelChat)
+            end
             if not res then
-                ctx.BotChat("❌ | Quiz generation failed")
+                ctx.BotChat("❌ | Quiz generation failed. Check console for Gemini API message.")
                 return
             end
-            local ok, data = pcall(function()
-                return ctx.HttpService:JSONDecode((res:gsub("```json", ""):gsub("```", "")))
-            end)
-            if ok and type(data) == "table" and #data > 0 then
+            local data = parseGeneratedQuiz(res)
+            if data then
                 ctx.lastQuizData = data
                 runQuiz(data)
             else
@@ -377,3 +405,4 @@ ctx.registerCommand({
 })
 
 ctx.consoleLog("Quiz game engine ready (/quiz <topic>, /startquiz, /lb)")
+
