@@ -46,25 +46,37 @@ local function formEncode(data)
     return table.concat(parts, "&")
 end
 
+local function requestSpotifyRefresh(useClientSecret)
+    local headers = {
+        ["Content-Type"] = "application/x-www-form-urlencoded",
+    }
+    local body = {
+        grant_type = "refresh_token",
+        refresh_token = ctx.settings.spotifyRefreshToken,
+    }
+
+    if useClientSecret then
+        headers["Authorization"] = "Basic " .. base64Encode(ctx.settings.spotifyClientId .. ":" .. ctx.settings.spotifyClientSecret)
+    else
+        body.client_id = ctx.settings.spotifyClientId
+    end
+
+    return pcall(request, {
+        Url = "https://accounts.spotify.com/api/token",
+        Method = "POST",
+        Headers = headers,
+        Body = formEncode(body),
+    })
+end
+
 local function refreshSpotifyToken()
     if not ctx.settings.spotifyClientId
-    or not ctx.settings.spotifyClientSecret
     or not ctx.settings.spotifyRefreshToken then
         return false
     end
 
-    local ok, response = pcall(request, {
-        Url = "https://accounts.spotify.com/api/token",
-        Method = "POST",
-        Headers = {
-            ["Authorization"] = "Basic " .. base64Encode(ctx.settings.spotifyClientId .. ":" .. ctx.settings.spotifyClientSecret),
-            ["Content-Type"] = "application/x-www-form-urlencoded",
-        },
-        Body = formEncode({
-            grant_type = "refresh_token",
-            refresh_token = ctx.settings.spotifyRefreshToken,
-        }),
-    })
+    local hasClientSecret = ctx.settings.spotifyClientSecret and ctx.settings.spotifyClientSecret ~= ""
+    local ok, response = requestSpotifyRefresh(hasClientSecret)
 
     if not ok then
         ctx.consoleErr("Spotify token refresh failed: " .. tostring(response))
@@ -77,6 +89,26 @@ local function refreshSpotifyToken()
             return HttpService:JSONDecode(response.Body)
         end)
         if decodeOk then data = decoded end
+    end
+
+    if hasClientSecret
+    and response.StatusCode == 400
+    and data
+    and data.error == "invalid_client" then
+        ctx.consoleWarn("Spotify rejected client secret; retrying refresh as PKCE/public client")
+        ok, response = requestSpotifyRefresh(false)
+        if not ok then
+            ctx.consoleErr("Spotify token refresh failed: " .. tostring(response))
+            return false
+        end
+
+        data = nil
+        if response.Body and #response.Body > 0 then
+            local decodeOk, decoded = pcall(function()
+                return HttpService:JSONDecode(response.Body)
+            end)
+            if decodeOk then data = decoded end
+        end
     end
 
     if response.StatusCode < 200 or response.StatusCode >= 300 then
