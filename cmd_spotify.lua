@@ -13,26 +13,30 @@ local HttpService = ctx.HttpService
 local function base64Encode(input)
     local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     local output = {}
-    local buffer = 0
-    local bits = 0
 
-    for i = 1, #input do
-        buffer = buffer * 256 + string.byte(input, i)
-        bits += 8
-        while bits >= 6 do
-            bits -= 6
-            local index = math.floor(buffer / (2 ^ bits)) % 64
-            table.insert(output, string.sub(chars, index + 1, index + 1))
+    for i = 1, #input, 3 do
+        local b1 = string.byte(input, i) or 0
+        local b2 = string.byte(input, i + 1) or 0
+        local b3 = string.byte(input, i + 2) or 0
+        local n = (b1 * 65536) + (b2 * 256) + b3
+
+        local c1 = math.floor(n / 262144) % 64
+        local c2 = math.floor(n / 4096) % 64
+        local c3 = math.floor(n / 64) % 64
+        local c4 = n % 64
+
+        table.insert(output, string.sub(chars, c1 + 1, c1 + 1))
+        table.insert(output, string.sub(chars, c2 + 1, c2 + 1))
+        if i + 1 <= #input then
+            table.insert(output, string.sub(chars, c3 + 1, c3 + 1))
+        else
+            table.insert(output, "=")
         end
-    end
-
-    if bits > 0 then
-        local index = (buffer * (2 ^ (6 - bits))) % 64
-        table.insert(output, string.sub(chars, index + 1, index + 1))
-    end
-
-    while (#output % 4) ~= 0 do
-        table.insert(output, "=")
+        if i + 2 <= #input then
+            table.insert(output, string.sub(chars, c4 + 1, c4 + 1))
+        else
+            table.insert(output, "=")
+        end
     end
 
     return table.concat(output)
