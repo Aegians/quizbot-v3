@@ -139,6 +139,8 @@ ctx.settings = {
     
     -- Spotify
     spotifyToken = nil,
+    ttsBridgeUrl = "http://127.0.0.1:8765/say",
+    ttsPreferBridge = true,
     
     -- Fly
     flySpeed = 50,

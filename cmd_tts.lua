@@ -26,6 +26,38 @@ local VOICES = {
 }
 local currentVoice = "Kore"
 local currentSound = nil
+local ttsMode = ctx.settings.ttsPreferBridge and "bridge" or "local"
+
+local function sendBridgeTTS(text, voice)
+    if not ctx.settings.ttsBridgeUrl or ctx.settings.ttsBridgeUrl == "" then
+        return false
+    end
+
+    local ok, response = pcall(request, {
+        Url = ctx.settings.ttsBridgeUrl,
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json",
+        },
+        Body = HttpService:JSONEncode({
+            text = text,
+            voice = voice or currentVoice,
+        }),
+    })
+
+    if not ok then
+        ctx.consoleWarn("TTS bridge unavailable: " .. tostring(response))
+        return false
+    end
+
+    if response.StatusCode and response.StatusCode >= 200 and response.StatusCode < 300 then
+        ctx.consoleLog("TTS sent to Voicemeeter bridge")
+        return true
+    end
+
+    ctx.consoleWarn("TTS bridge rejected request: " .. tostring(response.StatusCode))
+    return false
+end
 
 ----------------------------------------------------------------
 -- Base64 Decode
@@ -273,6 +305,16 @@ end
 -- Decodes base64 audio, saves to file, plays via getcustomasset
 ----------------------------------------------------------------
 local function playTTS(text, voice)
+    if ttsMode == "bridge" or ttsMode == "both" then
+        local sent = sendBridgeTTS(text, voice)
+        if sent and ttsMode == "bridge" then
+            return true
+        end
+        if ttsMode == "bridge" then
+            ctx.consoleWarn("TTS bridge failed; falling back to local Roblox playback")
+        end
+    end
+
     if not getcustomasset then
         ctx.consoleWarn("TTS: getcustomasset not available")
         return false
@@ -403,6 +445,24 @@ ctx.registerCommand({
         else
             ctx.BotChat("❌ | Unknown voice. Available: " .. table.concat(VOICES, ", "))
         end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"ttsmode", "voicemode"},
+    args = "<bridge|local|both>",
+    info = "Choose TTS output mode",
+    category = "Voice",
+    fn = function(args)
+        args = string.lower(args or "")
+        if args ~= "bridge" and args ~= "local" and args ~= "both" then
+            ctx.BotChat("TTS mode: " .. ttsMode .. " | Use bridge, local, or both")
+            return
+        end
+
+        ttsMode = args
+        ctx.settings.ttsPreferBridge = (args ~= "local")
+        ctx.BotChat("TTS mode set to: " .. args)
     end,
 })
 
