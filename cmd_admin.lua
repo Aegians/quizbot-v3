@@ -22,6 +22,96 @@ local function addUnique(list, value)
     return true
 end
 
+local rigMorph = {
+    originalCharacter = nil,
+    activeModel = nil,
+}
+
+local function setCameraToCharacter(char)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum and workspace.CurrentCamera then
+        workspace.CurrentCamera.CameraSubject = hum
+    end
+end
+
+local function switchRig(rigName)
+    local rigType = rigName == "R6" and Enum.HumanoidRigType.R6 or Enum.HumanoidRigType.R15
+    local oldChar = ctx.LocalPlayer.Character
+    local oldHRP = oldChar and oldChar:FindFirstChild("HumanoidRootPart")
+    local oldCFrame = oldHRP and oldHRP.CFrame or CFrame.new(0, 5, 0)
+
+    if not rigMorph.originalCharacter and oldChar ~= rigMorph.activeModel then
+        rigMorph.originalCharacter = oldChar
+    end
+
+    local okDesc, desc = pcall(function()
+        return ctx.Players:GetHumanoidDescriptionFromUserId(ctx.LocalPlayer.UserId)
+    end)
+    if not okDesc or not desc then
+        ctx.BotChat("Could not get your avatar description")
+        return
+    end
+
+    local okModel, model = pcall(function()
+        return ctx.Players:CreateHumanoidModelFromDescription(desc, rigType)
+    end)
+    if not okModel or not model then
+        ctx.BotChat("This game blocked the " .. rigName .. " morph")
+        return
+    end
+
+    model.Name = ctx.LocalPlayer.Name .. "_" .. rigName
+    model.Parent = workspace
+
+    local root = model:FindFirstChild("HumanoidRootPart")
+    if root then
+        model.PrimaryPart = root
+        model:PivotTo(oldCFrame)
+    end
+
+    if rigMorph.activeModel and rigMorph.activeModel ~= model then
+        pcall(function() rigMorph.activeModel:Destroy() end)
+    end
+    if oldChar and oldChar ~= rigMorph.activeModel and oldChar.Parent then
+        pcall(function() oldChar.Parent = nil end)
+    end
+
+    rigMorph.activeModel = model
+    ctx.LocalPlayer.Character = model
+    setCameraToCharacter(model)
+    ctx.BotChat("Switched to " .. rigName .. " morph")
+end
+
+local function restoreRigMorph()
+    local original = rigMorph.originalCharacter
+    if not original then
+        ctx.BotChat("No original character saved")
+        return
+    end
+
+    local current = ctx.LocalPlayer.Character
+    local currentHRP = current and current:FindFirstChild("HumanoidRootPart")
+    local currentCFrame = currentHRP and currentHRP.CFrame or CFrame.new(0, 5, 0)
+
+    if not original.Parent then
+        original.Parent = workspace
+    end
+    local root = original:FindFirstChild("HumanoidRootPart")
+    if root then
+        original:PivotTo(currentCFrame)
+    end
+
+    ctx.LocalPlayer.Character = original
+    setCameraToCharacter(original)
+
+    if rigMorph.activeModel and rigMorph.activeModel.Parent then
+        pcall(function() rigMorph.activeModel:Destroy() end)
+    end
+    rigMorph.activeModel = nil
+    rigMorph.originalCharacter = nil
+    ctx.BotChat("Original character restored")
+end
+
 ----------------------------------------------------------------
 -- Register Commands
 ----------------------------------------------------------------
@@ -210,6 +300,33 @@ ctx.registerCommand({
     fn = function()
         local hum = getHumanoid()
         if hum then hum.Jump = true end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"r6", "tor6"},
+    info = "Switch to a local R6 avatar morph",
+    category = "Admin",
+    fn = function()
+        switchRig("R6")
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"r15", "tor15"},
+    info = "Switch to a local R15 avatar morph",
+    category = "Admin",
+    fn = function()
+        switchRig("R15")
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"unmorph", "restoremorph"},
+    info = "Restore your original character after r6/r15",
+    category = "Admin",
+    fn = function()
+        restoreRigMorph()
     end,
 })
 

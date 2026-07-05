@@ -25,7 +25,7 @@ quizbot-v3/
 ├── loader.lua        Entry point: services, chat bypass, command registry, Gemini API, module loader
 ├── cmd_help.lua      /help, /stats, /setkey, /settoken, /prefix, /destroy
 ├── cmd_fly.lua       /fly, /unfly, /speed, /flyto, /follow, /unfollow, /tp, /noclip
-├── cmd_admin.lua     /kick, /allow, /god, /reset, /bring, /players, /rejoin, /hop, /chat, /face, /addadmin
+├── cmd_admin.lua     /kick, /allow, /god, /reset, /r6, /r15, /unmorph, /bring, /players, /rejoin, /hop, /chat, /face, /addadmin
 ├── cmd_spotify.lua   /play, /queue, /devices, /pause, /skip, /prev, /np, /vol, /shuffle, /loop
 ├── cmd_tts.lua       /say, /announce, /voice, /stoptts, /cleartts
 ├── cmd_quiz.lua      /ask, /real, /gen, /memorize, /clearmem, /copyquiz, /jump

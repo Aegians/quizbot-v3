@@ -10,6 +10,7 @@ local noclipConnection = nil
 
 local flyActive = false
 local noclipActive = false
+local stopFollow = nil
 
 -- Use shared helpers from ctx (defined in loader)
 local getHRP = ctx.getHRP
@@ -118,44 +119,51 @@ local function stopFly()
 end
 
 ----------------------------------------------------------------
--- Follow System (fly-based)
+-- Follow System (ground-based)
 ----------------------------------------------------------------
 local function startFollow(targetPlayer)
     if not targetPlayer or not targetPlayer.Character then return end
+
+    stopFly()
+    stopFollow()
+
     ctx.state.following = true
     ctx.state.followTarget = targetPlayer
 
-    if not flyActive then startFly() end
-
     followThread = task.spawn(function()
-        while ctx.state.following and flyActive do
+        while ctx.state.following do
             local hrp = getHRP()
+            local hum = getHumanoid()
             local targetChar = targetPlayer.Character
-            if hrp and targetChar then
+            if hrp and hum and targetChar then
                 local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
                 if targetHRP then
-                    local dir = (targetHRP.Position - hrp.Position)
-                    local dist = dir.Magnitude
-                    if dist > 8 then
-                        -- Fly toward target
-                        local bv = hrp:FindFirstChild("QuizBotFlyVel")
-                        if bv then
-                            bv.Velocity = dir.Unit * math.min(ctx.settings.flySpeed, dist * 2)
-                        end
+                    local offset = targetHRP.CFrame.LookVector * -4
+                    local goal = targetHRP.Position + offset
+                    local dist = (goal - hrp.Position).Magnitude
+
+                    if hum.Sit then hum.Sit = false end
+                    if hum.PlatformStand then hum.PlatformStand = false end
+
+                    if dist > 6 then
+                        hum:MoveTo(goal)
                     else
-                        local bv = hrp:FindFirstChild("QuizBotFlyVel")
-                        if bv then bv.Velocity = Vector3.new(0, 0, 0) end
+                        hum:Move(Vector3.new(0, 0, 0), false)
                     end
                 end
             end
-            task.wait()
+            task.wait(0.25)
         end
     end)
 end
 
-local function stopFollow()
+stopFollow = function()
     ctx.state.following = false
     ctx.state.followTarget = nil
+    local hum = getHumanoid()
+    if hum then
+        hum:Move(Vector3.new(0, 0, 0), false)
+    end
     if followThread then
         pcall(function() task.cancel(followThread) end)
         followThread = nil
@@ -281,7 +289,7 @@ ctx.registerCommand({
 ctx.registerCommand({
     aliases = {"follow", "fol"},
     args = "<player>",
-    info = "Follow a player (flying)",
+    info = "Follow a player on foot",
     category = "Movement",
     fn = function(args)
         if ctx.state.following then
@@ -359,18 +367,18 @@ ctx.track(ctx.LocalPlayer.CharacterAdded:Connect(function(char)
     local wasFollowing = ctx.state.following
     local prevTarget = ctx.state.followTarget
 
-    if not wasFlying then return end
+    if not wasFlying and not wasFollowing then return end
 
     -- Old body movers died with the old character; clear our state cleanly
     stopFollow()
-    stopFly()
+    if wasFlying then stopFly() end
 
     -- Wait for the new character to be ready (humanoid must exist)
     char:WaitForChild("Humanoid", 10)
     char:WaitForChild("HumanoidRootPart", 10)
     task.wait(0.5)
 
-    startFly()
+    if wasFlying then startFly() end
 
     -- Resume follow if it was active and the target is still in-game
     if wasFollowing and prevTarget and prevTarget.Parent then
