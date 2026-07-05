@@ -443,6 +443,7 @@ spotifyTab:CreateButton({
 
 spotifyTab:CreateButton({ Name = "Pause", Callback = function() runConsole("pause") end })
 spotifyTab:CreateButton({ Name = "Skip", Callback = function() runConsole("skip") end })
+spotifyTab:CreateButton({ Name = "Start vote skip", Callback = function() runConsole("vskip") end })
 spotifyTab:CreateButton({ Name = "Now playing", Callback = function() runConsole("np") end })
 spotifyTab:CreateButton({ Name = "Devices", Callback = function() runConsole("devices") end })
 

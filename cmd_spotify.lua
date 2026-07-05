@@ -259,26 +259,112 @@ end
 -- Search
 -- Resolves a text query into a track URI.
 ----------------------------------------------------------------
+local function normalizeText(value)
+    value = string.lower(tostring(value or ""))
+    value = value:gsub("[%p%c]", " ")
+    value = value:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    return value
+end
+
+local function words(value)
+    local out = {}
+    for word in string.gmatch(normalizeText(value), "%S+") do
+        table.insert(out, word)
+    end
+    return out
+end
+
+local function containsAll(haystack, needles)
+    haystack = normalizeText(haystack)
+    for _, needle in ipairs(needles) do
+        if not string.find(haystack, needle, 1, true) then
+            return false
+        end
+    end
+    return true
+end
+
+local function parseSpotifyTrackId(query)
+    query = tostring(query or "")
+    return string.match(query, "spotify:track:([%w]+)")
+        or string.match(query, "open%.spotify%.com/track/([%w]+)")
+        or string.match(query, "spotify%.com/track/([%w]+)")
+end
+
+local function trackFromItem(track)
+    if not track then return nil end
+    local artists = {}
+    for _, a in ipairs(track.artists or {}) do
+        table.insert(artists, a.name)
+    end
+    return {
+        uri = track.uri,
+        name = track.name,
+        artists = table.concat(artists, ", "),
+        popularity = track.popularity or 0,
+        album = track.album and track.album.name or "",
+    }
+end
+
+local function getTrackById(trackId)
+    local data = spotifyRequest("tracks/" .. HttpService:UrlEncode(trackId))
+    if not data or type(data) ~= "table" or not data.uri then return nil end
+    return trackFromItem(data)
+end
+
+local function scoreTrack(track, query)
+    local queryNorm = normalizeText(query)
+    local titleNorm = normalizeText(track.name)
+    local artistNorm = normalizeText(track.artists)
+    local combined = titleNorm .. " " .. artistNorm .. " " .. normalizeText(track.album)
+    local queryWords = words(query)
+    local score = track.popularity or 0
+
+    if titleNorm == queryNorm then score += 120 end
+    if combined == queryNorm then score += 150 end
+    if string.sub(titleNorm, 1, #queryNorm) == queryNorm then score += 70 end
+    if string.find(combined, queryNorm, 1, true) then score += 55 end
+    if containsAll(combined, queryWords) then score += 80 end
+
+    local titlePart, artistPart = string.match(query, "^(.-)%s+by%s+(.+)$")
+    if not titlePart then
+        titlePart, artistPart = string.match(query, "^(.-)%s+%-%s+(.+)$")
+    end
+    if titlePart and artistPart then
+        if containsAll(titleNorm, words(titlePart)) then score += 80 end
+        if containsAll(artistNorm, words(artistPart)) then score += 110 end
+    end
+
+    return score
+end
+
 local function searchTrack(query)
-    -- URL-encode the query
+    local trackId = parseSpotifyTrackId(query)
+    if trackId then
+        return getTrackById(trackId)
+    end
+
     local encoded = HttpService:UrlEncode(query)
-    local data = spotifyRequest("search?q=" .. encoded .. "&type=track&limit=1")
+    local data = spotifyRequest("search?q=" .. encoded .. "&type=track&limit=10&market=from_token")
     if not data or type(data) ~= "table" then return nil end
     if not data.tracks or not data.tracks.items or #data.tracks.items == 0 then
         return nil
     end
 
-    local track = data.tracks.items[1]
-    local artists = {}
-    for _, a in ipairs(track.artists or {}) do
-        table.insert(artists, a.name)
+    local best = nil
+    local bestScore = -math.huge
+    for _, item in ipairs(data.tracks.items) do
+        local track = trackFromItem(item)
+        if track then
+            local score = scoreTrack(track, query)
+            if score > bestScore then
+                best = track
+                bestScore = score
+            end
+        end
     end
 
-    return {
-        uri = track.uri,
-        name = track.name,
-        artists = table.concat(artists, ", "),
-    }
+    return best
 end
 
 ----------------------------------------------------------------
@@ -334,6 +420,111 @@ local function cacheAlbumArt(track)
     -- Could implement album art caching similar to zzerexx's Spotify player
     -- Skipping for now to save registers
 end
+
+----------------------------------------------------------------
+-- Vote Skip
+----------------------------------------------------------------
+local voteSkip = {
+    active = false,
+    yes = {},
+    no = {},
+    startedAt = 0,
+    timeout = 30,
+    yesNeeded = 2,
+    noNeeded = 3,
+}
+
+local function countVotes(bucket)
+    local count = 0
+    for _ in pairs(bucket) do count += 1 end
+    return count
+end
+
+local function resetVoteSkip()
+    voteSkip.active = false
+    voteSkip.yes = {}
+    voteSkip.no = {}
+    voteSkip.startedAt = 0
+end
+
+local function finishVoteSkip(skipped)
+    if skipped then
+        spotifyNext()
+        task.wait(0.5)
+        local np = getNowPlaying()
+        if np then
+            ctx.BotChat("Vote passed. Skipped to: " .. np.name .. " - " .. np.artists)
+        else
+            ctx.BotChat("Vote passed. Skipped.")
+        end
+    else
+        ctx.BotChat("Vote skip failed.")
+    end
+    resetVoteSkip()
+end
+
+local function castVote(player, choice)
+    if not voteSkip.active or not player then return end
+    if (tick() - voteSkip.startedAt) > voteSkip.timeout then
+        ctx.BotChat("Vote skip expired.")
+        resetVoteSkip()
+        return
+    end
+
+    local key = tostring(player.UserId)
+    if choice == "yes" and voteSkip.yes[key] then return end
+    if choice == "no" and voteSkip.no[key] then return end
+    voteSkip.yes[key] = nil
+    voteSkip.no[key] = nil
+    if choice == "yes" then
+        voteSkip.yes[key] = true
+    elseif choice == "no" then
+        voteSkip.no[key] = true
+    else
+        return
+    end
+
+    local yesCount = countVotes(voteSkip.yes)
+    local noCount = countVotes(voteSkip.no)
+    ctx.BotChat("Vote skip: yes " .. yesCount .. "/" .. voteSkip.yesNeeded
+        .. " | no " .. noCount .. "/" .. voteSkip.noNeeded)
+
+    if yesCount >= voteSkip.yesNeeded then
+        finishVoteSkip(true)
+    elseif noCount >= voteSkip.noNeeded then
+        finishVoteSkip(false)
+    end
+end
+
+local function handleVoteText(player, text)
+    if not voteSkip.active then return end
+    if not player then return end
+
+    text = normalizeText(text)
+    if text == "yes" or text == "y" then
+        castVote(player, "yes")
+    elseif text == "no" or text == "n" then
+        castVote(player, "no")
+    end
+end
+
+ctx.track(ctx.TextChatService.MessageReceived:Connect(function(message)
+    local source = message.TextSource
+    if not source then return end
+    handleVoteText(ctx.Players:GetPlayerByUserId(source.UserId), message.Text)
+end))
+
+local function hookVoteChat(player)
+    if not player or not player.Chatted then return end
+    ctx.track(player.Chatted:Connect(function(text)
+        handleVoteText(player, text)
+    end))
+end
+
+for _, player in ipairs(ctx.Players:GetPlayers()) do
+    hookVoteChat(player)
+end
+ctx.track(ctx.Players.PlayerAdded:Connect(hookVoteChat))
 
 ----------------------------------------------------------------
 -- Register Commands
@@ -455,6 +646,34 @@ ctx.registerCommand({
         else
             ctx.BotChat("⏭️ | Skipped")
         end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"vskip", "voteskip"},
+    info = "Start or vote yes on a public Spotify skip vote",
+    category = "Spotify",
+    permission = "all",
+    fn = function(args, player)
+        if voteSkip.active and (tick() - voteSkip.startedAt) <= voteSkip.timeout then
+            castVote(player, "yes")
+            return
+        end
+
+        resetVoteSkip()
+        voteSkip.active = true
+        voteSkip.startedAt = tick()
+        ctx.BotChat("Vote skip started. Type yes or no. Need "
+            .. voteSkip.yesNeeded .. " yes to skip, or "
+            .. voteSkip.noNeeded .. " no to cancel.")
+        castVote(player, "yes")
+
+        task.delay(voteSkip.timeout, function()
+            if voteSkip.active and (tick() - voteSkip.startedAt) >= voteSkip.timeout then
+                ctx.BotChat("Vote skip expired.")
+                resetVoteSkip()
+            end
+        end)
     end,
 })
 

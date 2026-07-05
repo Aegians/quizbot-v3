@@ -314,7 +314,7 @@ ctx.registerCommand({
 })
 
 ctx.registerCommand({
-    aliases = {"tp", "teleport"},
+    aliases = {"tp", "teleport", "to"},
     args = "<player>",
     info = "Instant teleport to player (no fly)",
     category = "Movement",

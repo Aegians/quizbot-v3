@@ -9,6 +9,19 @@ local ctx = ...
 local findPlayer = ctx.findPlayer
 local getHRP = ctx.getHRP
 
+local function getHumanoid()
+    local char = ctx.LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function addUnique(list, value)
+    for _, item in ipairs(list) do
+        if item == value then return false end
+    end
+    table.insert(list, value)
+    return true
+end
+
 ----------------------------------------------------------------
 -- Register Commands
 ----------------------------------------------------------------
@@ -25,7 +38,7 @@ ctx.registerCommand({
         if target then
             -- Add to blocked list in ctx
             ctx.blockedPlayers = ctx.blockedPlayers or {}
-            table.insert(ctx.blockedPlayers, target.Name)
+            addUnique(ctx.blockedPlayers, target.Name)
             ctx.BotChat("🚫 | " .. target.DisplayName .. " blocked")
         else
             ctx.BotChat("❌ | Player not found: " .. args)
@@ -52,6 +65,30 @@ ctx.registerCommand({
             end
         end
         ctx.BotChat("ℹ️ | " .. name .. " was not blocked")
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"blocked", "blocklist"},
+    info = "Show blocked quiz participants",
+    category = "Admin",
+    fn = function()
+        ctx.blockedPlayers = ctx.blockedPlayers or {}
+        if #ctx.blockedPlayers == 0 then
+            ctx.BotChat("No blocked players")
+            return
+        end
+        ctx.BotChat("Blocked: " .. table.concat(ctx.blockedPlayers, ", "))
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"clearblocks", "unblockall"},
+    info = "Clear blocked quiz participants",
+    category = "Admin",
+    fn = function()
+        ctx.blockedPlayers = {}
+        ctx.BotChat("Block list cleared")
     end,
 })
 
@@ -89,6 +126,90 @@ ctx.registerCommand({
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then hum.Health = 0 end
         end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"ws", "walkspeed"},
+    args = "<speed>",
+    info = "Set local walk speed",
+    category = "Admin",
+    fn = function(args)
+        local value = tonumber(args)
+        local hum = getHumanoid()
+        if not value or not hum then
+            ctx.consoleWarn("Usage: /ws <speed>")
+            return
+        end
+        hum.WalkSpeed = value
+        ctx.BotChat("WalkSpeed: " .. tostring(value))
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"jp", "jumppower"},
+    args = "<power>",
+    info = "Set local jump power",
+    category = "Admin",
+    fn = function(args)
+        local value = tonumber(args)
+        local hum = getHumanoid()
+        if not value or not hum then
+            ctx.consoleWarn("Usage: /jp <power>")
+            return
+        end
+        hum.UseJumpPower = true
+        hum.JumpPower = value
+        ctx.BotChat("JumpPower: " .. tostring(value))
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"gravity", "grav"},
+    args = "<number>",
+    info = "Set workspace gravity",
+    category = "Admin",
+    fn = function(args)
+        local value = tonumber(args)
+        if not value then
+            ctx.consoleWarn("Usage: /gravity <number>")
+            return
+        end
+        workspace.Gravity = value
+        ctx.BotChat("Gravity: " .. tostring(value))
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"sit"},
+    info = "Sit your character",
+    category = "Admin",
+    fn = function()
+        local hum = getHumanoid()
+        if hum then hum.Sit = true end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"unsit", "stand"},
+    info = "Stand your character",
+    category = "Admin",
+    fn = function()
+        local hum = getHumanoid()
+        if hum then
+            hum.Sit = false
+            hum.PlatformStand = false
+        end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"jump"},
+    info = "Make your character jump",
+    category = "Admin",
+    fn = function()
+        local hum = getHumanoid()
+        if hum then hum.Jump = true end
     end,
 })
 
@@ -232,6 +353,70 @@ ctx.registerCommand({
     end,
 })
 
+ctx.registerCommand({
+    aliases = {"view", "spectate", "watch"},
+    args = "<player>",
+    info = "Set camera to watch a player",
+    category = "Admin",
+    fn = function(args)
+        local target = findPlayer(args)
+        if not target or not target.Character then
+            ctx.BotChat("Player not found")
+            return
+        end
+        local hum = target.Character:FindFirstChildOfClass("Humanoid")
+        if hum and workspace.CurrentCamera then
+            workspace.CurrentCamera.CameraSubject = hum
+            ctx.BotChat("Viewing " .. target.DisplayName)
+        end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"unview", "unspectate"},
+    info = "Return camera to your character",
+    category = "Admin",
+    fn = function()
+        local hum = getHumanoid()
+        if hum and workspace.CurrentCamera then
+            workspace.CurrentCamera.CameraSubject = hum
+            ctx.BotChat("Camera restored")
+        end
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"pos", "coords", "position"},
+    info = "Print current position",
+    category = "Admin",
+    fn = function()
+        local hrp = getHRP()
+        if not hrp then return end
+        local p = hrp.Position
+        local text = string.format("%.1f, %.1f, %.1f", p.X, p.Y, p.Z)
+        rconsoleprint("Position: " .. text .. "\n")
+        ctx.BotChat("Position: " .. text)
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"copypos", "copycoords"},
+    info = "Copy current position to clipboard",
+    category = "Admin",
+    fn = function()
+        local hrp = getHRP()
+        if not hrp then return end
+        local p = hrp.Position
+        local text = string.format("CFrame.new(%f, %f, %f)", p.X, p.Y, p.Z)
+        if setclipboard then
+            setclipboard(text)
+            ctx.BotChat("Position copied")
+        else
+            rconsoleprint(text .. "\n")
+        end
+    end,
+})
+
 -- /addadmin - Add allowed user
 ctx.registerCommand({
     aliases = {"addadmin", "adduser"},
@@ -240,7 +425,34 @@ ctx.registerCommand({
     category = "Admin",
     fn = function(args)
         if args == "" then return end
-        table.insert(ctx.settings.allowedUsers, args)
+        addUnique(ctx.settings.allowedUsers, args)
         ctx.BotChat("✅ | Added " .. args .. " to admin list")
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"removeadmin", "deladmin", "unadmin"},
+    args = "<username>",
+    info = "Remove a user from the allowed list",
+    category = "Admin",
+    fn = function(args)
+        if args == "" then return end
+        for i, name in ipairs(ctx.settings.allowedUsers) do
+            if string.lower(name) == string.lower(args) then
+                table.remove(ctx.settings.allowedUsers, i)
+                ctx.BotChat("Removed " .. name .. " from admin list")
+                return
+            end
+        end
+        ctx.BotChat(args .. " is not in the admin list")
+    end,
+})
+
+ctx.registerCommand({
+    aliases = {"admins", "allowed"},
+    info = "List allowed admins",
+    category = "Admin",
+    fn = function()
+        ctx.BotChat("Admins: " .. table.concat(ctx.settings.allowedUsers, ", "))
     end,
 })
