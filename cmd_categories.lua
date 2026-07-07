@@ -10,9 +10,47 @@ local categoryOrder = {}
 local categoryManager = {}
 categoryManager.__index = categoryManager
 
+local difficultyAliases = {
+    e = "easy",
+    ez = "easy",
+    easy = "easy",
+    m = "medium",
+    med = "medium",
+    medium = "medium",
+    h = "hard",
+    hard = "hard",
+    all = "all",
+}
+
+local difficultyOrder = {
+    all = 0,
+    easy = 1,
+    medium = 2,
+    hard = 3,
+}
+
 local function normalizeDifficulty(difficulty)
     difficulty = difficulty or ""
-    return string.lower(tostring(difficulty))
+    difficulty = string.lower(tostring(difficulty))
+    return difficultyAliases[difficulty] or difficulty
+end
+
+local function splitCategoryDifficulty(args)
+    args = tostring(args or ""):gsub("^%s+", ""):gsub("%s+$", "")
+
+    local firstWord, rest = string.match(args, "^(%S+)%s+(.+)$")
+    local leadingDifficulty = firstWord and normalizeDifficulty(firstWord)
+    if rest and difficultyAliases[leadingDifficulty] then
+        return rest, leadingDifficulty
+    end
+
+    local categoryArg, lastWord = string.match(args, "^(.-)%s+(%S+)$")
+    local trailingDifficulty = lastWord and normalizeDifficulty(lastWord)
+    if categoryArg and categoryArg ~= "" and difficultyAliases[trailingDifficulty] then
+        return categoryArg, trailingDifficulty
+    end
+
+    return args, nil
 end
 
 local function makeQuestion(questionText, options, value)
@@ -486,7 +524,9 @@ function ctx.getQuizCategoryDifficulties(name)
             table.insert(difficulties, difficulty)
         end
     end
-    table.sort(difficulties, function(a, b) return a < b end)
+    table.sort(difficulties, function(a, b)
+        return (difficultyOrder[a] or 99) < (difficultyOrder[b] or 99)
+    end)
     table.insert(difficulties, 1, "all")
     return difficulties
 end
@@ -497,9 +537,40 @@ ctx.registerCommand({
     category = "Quiz",
     fn = function()
         local names = {}
-        for _, name in ipairs(categoryOrder) do table.insert(names, name) end
+        for _, name in ipairs(categoryOrder) do
+            local levels = ctx.getQuizCategoryDifficulties(name)
+            local shown = {}
+            for _, level in ipairs(levels) do
+                if level ~= "all" then table.insert(shown, level) end
+            end
+            if #shown > 0 then
+                table.insert(names, name .. " [" .. table.concat(shown, "/") .. "]")
+            else
+                table.insert(names, name)
+            end
+        end
         sortNames(names)
         ctx.BotChat("Categories: " .. table.concat(names, ", "))
+    end,
+})
+
+ctx.registerCommand({
+    aliases = { "difficulties", "difficulty", "levels", "diffs" },
+    args = "<category>",
+    info = "List difficulties for a quiz category",
+    category = "Quiz",
+    fn = function(args)
+        if args == "" then
+            ctx.BotChat("Usage: " .. ctx.settings.prefix .. "difficulties <category>")
+            return
+        end
+        local categoryName = ctx.findQuizCategory(args)
+        if not categoryName then
+            ctx.BotChat("Category not found. Use " .. ctx.settings.prefix .. "categories")
+            return
+        end
+        local levels = ctx.getQuizCategoryDifficulties(categoryName)
+        ctx.BotChat(categoryName .. " difficulties: " .. table.concat(levels, ", "))
     end,
 })
 
@@ -514,22 +585,23 @@ ctx.registerCommand({
             return
         end
 
-        local categoryArg = args
-        local difficulty = nil
-        local maybeCategory, maybeDifficulty = string.match(args, "^(.-)%s+(easy|medium|hard)$")
-        if maybeCategory and maybeCategory ~= "" then
-            categoryArg = maybeCategory
-            difficulty = maybeDifficulty
-        end
+        local categoryArg, difficulty = splitCategoryDifficulty(args)
+        local lookupDifficulty = difficulty ~= "all" and difficulty or nil
 
-        local questions, categoryName = ctx.getQuizCategoryQuestions(categoryArg, difficulty)
+        local questions, categoryName = ctx.getQuizCategoryQuestions(categoryArg, lookupDifficulty)
         if not questions or #questions == 0 then
-            ctx.BotChat("Category not found. Use " .. ctx.settings.prefix .. "categories")
+            if categoryName and difficulty then
+                local levels = ctx.getQuizCategoryDifficulties(categoryName)
+                ctx.BotChat("No " .. difficulty .. " questions for " .. categoryName .. ". Try: " .. table.concat(levels, ", "))
+            else
+                ctx.BotChat("Category not found. Use " .. ctx.settings.prefix .. "categories")
+            end
             return
         end
 
         ctx.lastQuizData = questions
-        ctx.BotChat("Loaded " .. categoryName .. " (" .. #questions .. " questions). Starting...")
+        local label = categoryName .. (difficulty and (" " .. difficulty) or "")
+        ctx.BotChat("Loaded " .. label .. " (" .. #questions .. " questions). Starting...")
         task.wait(1)
         if ctx.runQuiz then
             task.spawn(function() ctx.runQuiz(questions) end)

@@ -15,6 +15,7 @@ local selectedTtsMode = "bridge"
 local spotifyQuery = ""
 local targetPlayerName = ""
 local pointsAmount = 10
+local notify = nil
 
 local function runConsole(command)
     ctx.runCommand("/" .. command, ctx.LocalPlayer, "console")
@@ -75,7 +76,7 @@ local function startSelectedCategory()
     runConsole(command)
 end
 
-local function notify(title, text)
+notify = function(title, text)
     if ctx.notify then
         ctx.notify(title, text, 4)
     else
@@ -214,7 +215,11 @@ mainTab:CreateButton({
             notify("Invalid topic", "Enter a topic first")
             return
         end
-        runConsole("gen " .. aiTopic)
+        local command = "gen " .. aiTopic
+        if selectedDifficulty and selectedDifficulty ~= "all" then
+            command = command .. " " .. selectedDifficulty
+        end
+        runConsole(command)
     end,
 })
 
@@ -225,7 +230,11 @@ mainTab:CreateButton({
             notify("Invalid topic", "Enter a topic first")
             return
         end
-        runConsole("quiz " .. aiTopic)
+        local command = "quiz " .. aiTopic
+        if selectedDifficulty and selectedDifficulty ~= "all" then
+            command = command .. " " .. selectedDifficulty
+        end
+        runConsole(command)
     end,
 })
 

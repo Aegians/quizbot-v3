@@ -39,7 +39,7 @@ local facePlayer = ctx.facePlayer
 
 local quizGenerationConfig = {
     maxOutputTokens = 1200,
-    temperature = 0.8,
+    temperature = 0.4,
     responseMimeType = "application/json",
     responseSchema = {
         type = "ARRAY",
@@ -60,6 +60,9 @@ local quizGenerationConfig = {
 }
 
 local function parseGeneratedQuiz(raw)
+    if ctx.parseGeneratedQuiz then
+        return ctx.parseGeneratedQuiz(raw)
+    end
     if not raw then return nil end
     local cleaned = raw:gsub("```json", ""):gsub("```", "")
     local json = cleaned:match("%b[]") or cleaned
@@ -85,6 +88,34 @@ local function parseGeneratedQuiz(raw)
     end
 
     return data
+end
+
+local difficultyAliases = {
+    e = "easy",
+    ez = "easy",
+    easy = "easy",
+    m = "medium",
+    med = "medium",
+    medium = "medium",
+    h = "hard",
+    hard = "hard",
+}
+
+local function normalizeDifficultyWord(word)
+    word = string.lower(tostring(word or ""))
+    return difficultyAliases[word]
+end
+
+local function splitTopicDifficulty(args)
+    args = tostring(args or ""):gsub("^%s+", ""):gsub("%s+$", "")
+
+    local topic, lastWord = string.match(args, "^(.-)%s+(%S+)$")
+    local difficulty = normalizeDifficultyWord(lastWord)
+    if topic and topic ~= "" and difficulty then
+        return topic, difficulty
+    end
+
+    return args, nil
 end
 
 ----------------------------------------------------------------
@@ -167,14 +198,18 @@ ctx.registerCommand({
         if ctx.state.generationCooldown then return end
         ctx.state.generationCooldown = true
 
-        ctx.BotChat("🤖 | Generating quiz: " .. args .. "...")
+        local topic, difficulty = splitTopicDifficulty(args)
+        local difficultyText = difficulty or "medium"
 
-        local prompt = [[Generate 5 trivia questions about "]] .. args .. [[". 
+        ctx.BotChat("🤖 | Generating " .. difficultyText .. " quiz: " .. topic .. "...")
+
+        local prompt = [[Generate exactly 5 trivia questions about "]] .. topic .. [[". 
 REQUIREMENTS:
-1. Difficulty: Challenging but fair.
-2. Format: Array of objects [{"q":"Question","o":["Correct","Wrong1","Wrong2","Wrong3"]}]. JSON ONLY.
-3. Keep questions under 80 characters. Avoid complex words to prevent Roblox filtering.
-4. No markdown, just raw JSON.]]
+1. Difficulty: ]] .. difficultyText .. [[.
+2. Return ONLY valid JSON. No markdown. No explanation.
+3. Format exactly: [{"q":"Question","o":["Correct","Wrong1","Wrong2","Wrong3"]}]
+4. The first option in "o" must be the correct answer.
+5. Keep each question under 80 characters. Use simple Roblox-chat-safe wording.]]
 
         local res = ctx.geminiRequest(prompt, ctx.settings.modelQuiz, nil, quizGenerationConfig)
         if not res and ctx.settings.modelQuiz ~= ctx.settings.modelChat then
@@ -185,7 +220,7 @@ REQUIREMENTS:
             local data = parseGeneratedQuiz(res)
             if data then
                 ctx.lastQuizData = data
-                ctx.BotChat("✅ | Quiz generated: " .. args .. " (" .. #data .. " questions)")
+                ctx.BotChat("✅ | Quiz generated: " .. topic .. " " .. difficultyText .. " (" .. #data .. " questions)")
                 ctx.consoleLog("Quiz stored. Use /startquiz to run it in chat.")
             else
                 ctx.consoleWarn("Quiz parse failed. Raw Gemini output: " .. string.sub(res, 1, 500))

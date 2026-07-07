@@ -472,6 +472,154 @@ do
 end
 
 ----------------------------------------------------------------
+-- Quiz JSON Parser
+----------------------------------------------------------------
+local function trimText(value)
+    value = tostring(value or "")
+    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function decodeJsonCandidate(text)
+    local candidates = {}
+    local cleaned = tostring(text or "")
+        :gsub("```json", "")
+        :gsub("```lua", "")
+        :gsub("```", "")
+    table.insert(candidates, cleaned)
+
+    local arrayJson = cleaned:match("%b[]")
+    if arrayJson then table.insert(candidates, arrayJson) end
+
+    local objectJson = cleaned:match("%b{}")
+    if objectJson then table.insert(candidates, objectJson) end
+
+    for _, candidate in ipairs(candidates) do
+        candidate = trimText(candidate)
+        if candidate ~= "" then
+            local ok, data = pcall(function()
+                return ctx.HttpService:JSONDecode(candidate)
+            end)
+            if ok and type(data) == "table" then
+                return data
+            end
+        end
+    end
+    return nil
+end
+
+local function normalizedString(value)
+    if value == nil then return nil end
+    if type(value) == "string" or type(value) == "number" or type(value) == "boolean" then
+        local text = trimText(value)
+        if text ~= "" then return text end
+    end
+    return nil
+end
+
+local function optionText(value)
+    if type(value) == "table" then
+        return normalizedString(value.text or value.answer or value.option or value.label or value.value or value.name)
+    end
+    return normalizedString(value)
+end
+
+local function collectOptions(rawOptions)
+    local options = {}
+    local correctText = nil
+
+    if type(rawOptions) ~= "table" then
+        return options, correctText
+    end
+
+    for _, value in ipairs(rawOptions) do
+        local text = optionText(value)
+        if text then
+            table.insert(options, text)
+            if type(value) == "table" and (value.correct or value.isCorrect) then
+                correctText = text
+            end
+        end
+    end
+
+    if #options == 0 then
+        local keys = { "A", "B", "C", "D", "a", "b", "c", "d", "1", "2", "3", "4" }
+        for _, key in ipairs(keys) do
+            local text = optionText(rawOptions[key])
+            if text then table.insert(options, text) end
+        end
+    end
+
+    return options, correctText
+end
+
+local function moveCorrectFirst(options, correct)
+    if #options == 0 then return options end
+
+    local correctText = nil
+    if type(correct) == "number" then
+        correctText = options[correct]
+    else
+        correctText = normalizedString(correct)
+    end
+
+    if not correctText or correctText == "" then
+        return options
+    end
+
+    local foundIndex = nil
+    for i, option in ipairs(options) do
+        if string.lower(option) == string.lower(correctText) then
+            foundIndex = i
+            break
+        end
+    end
+
+    if foundIndex then
+        table.remove(options, foundIndex)
+    end
+    table.insert(options, 1, correctText)
+    return options
+end
+
+function ctx.parseGeneratedQuiz(raw)
+    local data = decodeJsonCandidate(raw)
+    if not data then return nil end
+
+    data = data.questions or data.quiz or data.items or data.data or data
+    if type(data) ~= "table" then return nil end
+    if data.q or data.question or data.text or data.prompt then
+        data = { data }
+    end
+
+    local normalized = {}
+    for _, item in ipairs(data) do
+        if type(item) == "table" then
+            local question = normalizedString(item.q or item.question or item.text or item.prompt)
+            local rawOptions = item.o or item.options or item.answers or item.choices
+            local options, optionMarkedCorrect = collectOptions(rawOptions)
+            local correct = item.correct or item.answer or item.correctAnswer
+                or item.correct_answer or item.correctIndex or item.correct_index
+                or optionMarkedCorrect
+
+            if question and #options >= 2 then
+                options = moveCorrectFirst(options, correct)
+                while #options > 4 do
+                    table.remove(options)
+                end
+                table.insert(normalized, {
+                    q = question,
+                    o = options,
+                    value = tonumber(item.value or item.points) or 1,
+                })
+            end
+        end
+    end
+
+    if #normalized == 0 then return nil end
+    return normalized
+end
+
+----------------------------------------------------------------
 -- Gemini API Helper
 ----------------------------------------------------------------
 function ctx.geminiRequest(prompt, model, retryCount, generationConfig)
